@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+// O "Envelope" que vai trafegar pela serial
+message MensagemSerial {
+    oneof conteudo {
+        BlocoDados bloco_dados = 1;
+        StatusSistema status_sistema = 2;
+    }
+}
+
+message BlocoDados {
+    uint32 id_bloco = 1;
+    uint32 timestamp = 2;
+    repeated float leituras = 3;
+}
+
+message StatusSistema {
+    uint32 timestamp = 1;
+    uint32 temperatura = 2;
+    uint32 umidade = 3;
+}

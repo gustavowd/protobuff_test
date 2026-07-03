@@ -1,20 +1,21 @@
 use std::io::{self, Read};
 use std::time::Duration;
-use serialport;
-use cobs;
 use prost::Message;
 
-// O compilador de Protobuf do Rust irá gerar essa struct automaticamente para você,
-// mas ela se parecerá com isso no código:
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct BlocoDados {
-    #[prost(uint32, tag = "1")]
-    pub id_bloco: u32,
-    #[prost(uint32, tag = "2")]
-    pub timestamp: u32,
-    #[prost(float, repeated, tag = "3")]
-    pub leituras: ::prost::alloc::vec::Vec<f32>,
+// ==========================================
+// Injeção Correta do Código Gerado
+// ==========================================
+pub mod proto {
+    // O prost-build por padrão gera o arquivo com o nome padrão do escopo (geralmente vazio se sem pacote, caindo em _.rs)
+    // Para garantir que o arquivo correto seja puxado, usamos a macro apontando para o arquivo gerado
+    include!(concat!(env!("OUT_DIR"), "/_.rs")); 
 }
+
+// O Prost converte os nomes para o padrão Snake Case do Rust!
+// MensagemSerial -> mensagem_serial
+// BlocoDados -> bloco_dados
+// StatusSistema -> status_sistema
+use proto::{mensagem_serial, MensagemSerial};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Configura e abre a porta serial
@@ -36,40 +37,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if byte == 0x00 { // Encontrou o fim do pacote!
                     if !pacote_acumulado.is_empty() {
                         
-                        // 2. Decodifica o COBS "in-place" (na própria memória do vetor)
-                        // Isso é extremamente rápido em Rust
+                        // 2. Decodifica o COBS in-place
                         if let Ok(dados_protobuf) = cobs::decode_vec(&pacote_acumulado) {
                             
-                            // 3. Deserializa o Protobuf usando a crate Prost
-                            match BlocoDados::decode(&dados_protobuf[..]) {
-                                Ok(bloco) => {
-                                    // SUCESSO! Seus dados prontos para uso
-                                    println!(
-                                        "Bloco #{} recebido. Timestamp: {}. Floats: {}", 
-                                        bloco.id_bloco, bloco.timestamp, bloco.leituras.len()
-                                    );
-
-                                    // 1. Pega os primeiros 10 elementos de forma segura 
-                                    // (se o vetor tiver menos de 10, ele pega apenas o que existir)
-                                    let primeiros_10 = bloco.leituras.iter().take(10);
-
-                                    // 2. Printa os valores na mesma linha
-                                    print!("Primeiras 10 leituras: ");
-                                    for (i, valor) in primeiros_10.enumerate() {
-                                        print!("[{}: {:.4}] ", i, valor); // {:.4} limita o float a 4 casas decimais
-                                    }
-                                    println!(); // Quebra a linha no final
+                            // 3. Deserializa o ENVELOPE principal em vez do BlocoDados diretamente
+                            match MensagemSerial::decode(&dados_protobuf[..]) {
+                                Ok(envelope) => {
                                     
-                                    // Exemplo de acesso ao primeiro float:
-                                    // println!("Primeira leitura: {}", bloco.leituras[0]);
+                                    // 4. Pattern Matching para extrair o conteúdo de dentro do Oneof
+                                    if let Some(conteudo_interno) = envelope.conteudo {
+                                        match conteudo_interno {
+                                            
+                                            // CASO A: A mensagem recebida é um BlocoDados
+                                            mensagem_serial::Conteudo::BlocoDados(bloco) => {
+                                                println!(
+                                                    "\n[TELEMETRIA] Bloco #{} recebido. Timestamp: {}. Total de Floats: {}", 
+                                                    bloco.id_bloco, bloco.timestamp, bloco.leituras.len()
+                                                );
+
+                                                // Printa os primeiros 10 elementos de forma segura
+                                                let primeiros_10 = bloco.leituras.iter().take(10);
+                                                print!("Primeiras 10 leituras: ");
+                                                for (i, valor) in primeiros_10.enumerate() {
+                                                    print!("[{}: {:.4}] ", i, valor);
+                                                }
+                                                println!();
+                                            }
+                                            
+                                            // CASO B: A mensagem recebida é o StatusSistema
+                                            mensagem_serial::Conteudo::StatusSistema(status) => {
+                                                println!("\n[DIAGNÓSTICO] Mensagem de status recebida!");
+                                                println!("-> Timestamp: {}", status.timestamp);
+                                                println!("-> Temperatura do chip: {}°C", status.temperatura);
+                                                println!("-> Umidade relativa: {}%", status.umidade);
+                                            }
+                                        }
+                                    }
                                 }
-                                Err(e) => eprintln!("Erro ao decodificar Protobuf: {:?}", e),
+                                Err(e) => eprintln!("Erro ao decodificar o envelope Protobuf: {:?}", e),
                             }
                         } else {
                             eprintln!("Erro no checksum/padrão do COBS.");
                         }
                         
-                        pacote_acumulado.clear(); // Limpa o buffer para o próximo bloco
+                        pacote_acumulado.clear();
                     }
                 } else {
                     pacote_acumulado.push(byte);
