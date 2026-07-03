@@ -1,0 +1,13 @@
+[package]
+name = "protobuff_test"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serialport = "4.3.0"
+
+# O ecossistema oficial e ultra otimizado de Protobuf para Rust
+prost = "0.14.4"
+
+# Codificador/Decodificador COBS binário (sem alocação de memória se não quiser)
+cobs = "0.5.1"
