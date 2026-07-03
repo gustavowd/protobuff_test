@@ -12,6 +12,8 @@ prost = "0.14.4"
 # Codificador/Decodificador COBS binário (sem alocação de memória se não quiser)
 cobs = "0.5.1"
 
+crc32fast = "1.5.0"
+
 # Esta seção diz ao Cargo o que usar APENAS na hora de compilar o projeto
 [build-dependencies]
 prost-build = "0.14.4"
